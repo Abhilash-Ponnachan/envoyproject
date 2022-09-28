@@ -1,0 +1,23 @@
+{{define "index"}}
+    <!doctype html>
+    <html lang="en">
+        <head>
+            <link rel="shortcut icon" type="image/x-icon" href="/assets/favicon.png">
+            <link rel="stylesheet" href="/assets/style.css">
+            <title>{{.Title}}</title>
+            <!--Override BG & FG Color with param values -->
+            <style>
+                body {
+                    background-color: {{.BgColor}};
+                    color: {{.FgColor}};
+                }
+            </style>
+        </head>
+        <body>
+            <div class="main-text">
+                This is Application <b>"{{.AppName}}"</b>.
+                => running on Host = {{.Host}}
+            </div>
+        </body>
+    </html>
+{{end}}

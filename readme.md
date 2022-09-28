@@ -61,3 +61,6 @@ $ docker run --rm -d --name=envoy -p 10000:10000 -v $(pwd)/proxy/config:/etc/env
 
 ### now again check browser http://localhost:1000
 >>> proxied to "Google Search home page"
+
+
+
