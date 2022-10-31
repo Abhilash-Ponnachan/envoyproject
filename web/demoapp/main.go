@@ -17,8 +17,11 @@ func main() {
 	fs := http.FileServer(http.Dir("."))
 	muxHandler.Handle("/assets/", fs)
 
+	// handler func to test server with 'hello'
+	muxHandler.HandleFunc("/hello", hello)
+
 	// handler funcs for other path (namely APIs)
-	//muxHandler.HandleFunc("/api/hello", rh.hello)
+	muxHandler.HandleFunc("/api/info", info)
 
 	// http server instance
 	server := http.Server{
