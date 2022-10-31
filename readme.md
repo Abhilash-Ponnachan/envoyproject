@@ -123,7 +123,7 @@ static_resources:
         port_value: 8080
     filter_chains: [{}]
 ```
-Now Run `Envoy proxy` again with Docker (expose `Port 8080` as that is the listening port we specified in the config above) using the <a name="#envoy-docker-run-mount">fllowing command</a>.
+Now Run `Envoy proxy` again with Docker (expose `Port 8080` as that is the listening port we specified in the config above) using the <a name="#envoy-docker-run-mount">following command</a>.
 
 ```bash
 $ docker run --rm -d --name=envoy -p 8080:8080 -v $(pwd)/proxy/config:/etc/envoy envoyproxy/envoy
@@ -186,7 +186,11 @@ Hello from Envoy Proxy!
 
 
 
-### References: {#references}
+<a id="#references">
+
+### References:
+
+</a> 
 
 https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto
 
