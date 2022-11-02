@@ -73,9 +73,9 @@ Now again check browser http://localhost:1000
 ### Fresh Configuration
 Make a configuration from scratch. Target different backends (upstream) servers.
 
-Simple backend app in Go.
+Simple backend app in `Go`.
 Shows a simple web page with the Name of the app, and the Host it is running on. By default it runs on PORT 8080, but that can be customised via Env var.
-The AppName, background and foreground colours can be customised via Env vars.
+The app name, background and foreground colours can be customised via Env vars.
 
 We containerise it and run it as Docker containers.
 
@@ -106,9 +106,9 @@ $ docker run --rm --name=demoapp2 -p 1112:8080 -e "APPNAME=App 2" -e "BGCOLOR=gr
 
   Description (summary)
 
-### Simple Static Reverse Proxy Config 
+### Reverse Proxy Config 
 
-A simple reverse proxy configuration, with just one backend app (cluster)
+`Envoy` configuration is very powerful in terms of all the options it gives us, however this also makes it quite complex, and difficult to find our way around it. One good way to understand it is to start with a bare-bones _listener_ that does nothing and then start layering functionality bit-by-bit and see what changes we need to do to achieve that. By the end of our journey, we will be more at home with the _configuration_ and more confident in playing around with it.
 
 #### Empty Listener
 
@@ -123,7 +123,7 @@ static_resources:
         port_value: 8080
     filter_chains: [{}]
 ```
-Now Run `Envoy proxy` again with Docker (expose `Port 8080` as that is the listening port we specified in the config above) using the <a name="#envoy-docker-run-mount">following command</a>.
+Now Run `Envoy proxy` again with Docker (expose `Port 8080` as that is the listening port we specified in the config above) using the <a id="#envoy-docker-run-mount">following command</a>.
 
 ```bash
 $ docker run --rm -d --name=envoy -p 8080:8080 -v $(pwd)/proxy/config:/etc/envoy envoyproxy/envoy
@@ -183,6 +183,87 @@ If we restart our `Envoy Docker` container, mounting the directory with the modi
 $ curl http://localhost:8080
 Hello from Envoy Proxy!
 ```
+
+#### Proxy to Backend App
+
+The next logical step would be to _route_ the traffic to some _upstream_(backend application). In our case we shall use our `demoapp` application that we wrote. We shall run our `Envoy` proxy and the `demoapp`as `Docker` containers and route traffic the _proxy_ to the _app_. For this to work in `Docker` the _containers_ need a way to discover each other using their '_container name_' (else we will have to keep modifying the `envoy.yaml` config with the dynamically assigned `IP` of the _backend app container_). The simplest way to do this is as follows:
+
+- Create a user-defined `Docker` _network_
+- When launching the _containers_, specify a `--name` for the _container_ and attach them to the user-defined _network_ (via the `--net` option)
+- Now, container on that _network_ can address each other using the `--anme` specified
+
+```bash
+# create docker network
+$ docker network create nw_demo_apps
+
+# launch demoapp as app1 into that network
+$ docker run --rm --name=app1 -p 1111:8080 --net=nw_demo_apps demoapp
+# Note: we have published to localhost:1111, this is just for testing, not needed for the proxy
+```
+
+Next we modify our `envoy.yaml` to add a _cluster_ (which points to the above `app1`) specify that _cluster_ as the _upstream_ for the _route config_ in our _listener_.
+
+```yaml
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8080
+    filter_chains: 
+      - filters:
+        - name: envoy.filters.network.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            stat_prefix: http_direct_response
+            http_filters:
+            - name: envoy.filters.http.router
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+            route_config:
+              virtual_hosts:
+              - name: direct_static_response
+                domains: ["*"]
+                routes:
+                - match:
+                    prefix: "/"
+                  route:
+                    cluster: app-one
+  clusters:
+  - name: app-one
+    connect_timeout: 3s
+    type: strict_dns
+    load_assignment:
+      cluster_name: app-one
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: app1
+                port_value: 8080
+```
+
+Note: that in the _cluster_ section the `type: strict_dns` is required if we want it to resolve the DNS name `app1` to its `IP` (I learned that the hard way).
+
+Now we launch the _proxy_ again using the same command we used previously but this time add it to the `nw_dwmo_apps` `Dokcer` _network_.
+
+```bash
+$ docker run --rm -d --name=envoy -p 8080:8080 -v $(pwd)/proxy/config:/etc/envoy --net=nw_demo_apps envoyproxy/envoy
+```
+
+Test it out by going to `http://localhost:8080` in your web browser, you should see a web page (served through the _proxy_) showing the name of the application as `Demo App - 1` and the _host_ it is running on (a `Docker` _container id_ in this case). If we access the app container directly using `http://localhost:1111` we should see the exact sage page.
+
+> > Insert image here
+
+#### Load-balancing to Backend Cluster
+
+#### Routing to Multiple Backends 
+
+#### Enabling TLS
+
+#### Dynamic Configuration
 
 
 
