@@ -1,0 +1,29 @@
+version: "3"
+services:
+  webapp-1:
+    image: demoapp
+    expose:
+    - "8080"
+    container_name: app1-1
+    networks:
+    - envoy_demo_nw
+  webapp-2:
+    image: demoapp
+    expose:
+    - "8080"
+    container_name: app1-2
+    networks:
+    - envoy_demo_nw
+  proxy:
+    image: envoyproxy/envoy
+    ports:
+    - "8080:8080"
+    container_name: envoy
+    networks:
+    - envoy_demo_nw
+    volumes: 
+    - ../proxy/config:/etc/envoy
+networks: 
+  envoy_demo_nw:
+    ipam:
+      driver: default

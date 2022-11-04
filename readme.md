@@ -247,7 +247,7 @@ static_resources:
 
 Note: that in the _cluster_ section the `type: strict_dns` is required if we want it to resolve the DNS name `app1` to its `IP` (I learned that the hard way).
 
-Now we launch the _proxy_ again using the same command we used previously but this time add it to the `nw_dwmo_apps` `Dokcer` _network_.
+Now we launch the _proxy_ again using the same command we used previously but this time add it to the `nw_dwmo_apps` `Docker` _network_.
 
 ```bash
 $ docker run --rm -d --name=envoy -p 8080:8080 -v $(pwd)/proxy/config:/etc/envoy --net=nw_demo_apps envoyproxy/envoy
@@ -257,7 +257,107 @@ Test it out by going to `http://localhost:8080` in your web browser, you should 
 
 > > Insert image here
 
-#### Load-balancing to Backend Cluster
+##### Docker Compose
+
+Since we will be repeatedly creating & destroying containers to try things out, it makes sense to use `docker-compose` to define our _setup_(_infrastructure_) rather typing out these long _shell commands_ all the time. I have a `setup` directory, with a `docker-compose.yaml` where we shall define our `Docker` setup. The `docker-compose` manifest for our simple setup above, with a single _app_ container and a _proxy_ container attached to a _user-defined network_ looks as shown. It is pretty self explanatory if you are familiar with `docker-compose`.
+
+```yaml
+version: "3"
+services:
+  webapp:
+    image: demoapp
+    ports:
+    - "1111:8080"
+    container_name: app1
+    networks:
+    - envoy_demo_nw
+  proxy:
+    image: envoyproxy/envoy
+    ports:
+    - "8080:8080"
+    container_name: envoy
+    networks:
+    - envoy_demo_nw
+    volumes: 
+    - ../proxy/config:/etc/envoy
+networks: 
+  envoy_demo_nw:
+    ipam:
+      driver: default
+```
+
+We can execute `$ docker-compose up` (optionally use `-d` flag if we want it to launch it in the background) to bring up all our containers and associated resources and configuration. And, `$ docker-compose down` to bring it down. Note, that we have to run that command from the directory that has the `docker-compose.yaml` file.
+
+From hereon we shall keep modify work with this `docker-compose.yaml` whenever we need to add or change containers to our setup.
+
+#### Load-balancing
+
+Now we shall add two instances of the an app (let's name them `app1-1` and `app1-2`) and modify our `envoy.yaml` config to simulate how multiple requests gets load-balanced between the instances. To achieve this, first we modify our `docker-compose.yaml` to add an additional `service` with the same _image_, so that we have two _containers_ running for the same _app_. Note that we changed the `ports` directive to `expose` , since we do not need to _bind_ them to _host_ anymore, we just need them exposed from the _container_ so that they can be accessed from the `Docker network` they are on.
+
+```yaml
+version: "3"
+services:
+  webapp-1:
+    image: demoapp
+    expose:
+    - "8080"
+    container_name: app1-1
+    networks:
+    - envoy_demo_nw
+  webapp-2:
+    image: demoapp
+    expose:
+    - "8080"
+    container_name: app1-2
+    networks:
+    - envoy_demo_nw
+  proxy:
+    image: envoyproxy/envoy
+    ports:
+    - "8080:8080"
+    container_name: envoy
+    networks:
+    - envoy_demo_nw
+    volumes: 
+    - ../proxy/config:/etc/envoy
+networks: 
+  envoy_demo_nw:
+    ipam:
+      driver: default
+```
+
+Modify the `envoy.yaml`configuration to add an `endpoint` under the `lb_endpoints` section in the `cluster`.
+
+```yaml
+static_resources:
+  listeners:
+ 	# not shown here for brevity...
+  clusters:
+  - name: app-one
+    connect_timeout: 3s
+    type: strict_dns
+    load_assignment:
+      cluster_name: app-one
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: app1-1
+                port_value: 8080
+        - endpoint:
+            address:
+              socket_address:
+                address: app1-2
+                port_value: 8080
+
+```
+
+With that simple change `Envoy` will load-balance multiple requests(that match the `filter`) between those two`endpoints` in the cluster. Now if we navigate to `http://localhost:8080` in a browser and keep refreshing the page, we should see our familiar web-page (for `Demo App-1`), but the `Host` name should keep alternating between two `Docker` _container Ids_.
+
+> >  Insert image 1 & 2 LB
+
+Of course this is a very simple demonstration of that capability using the default `round-robin` algorithm (we can control it using the `lb_policy` directive if needed). `Envoy` can do much more complex load-balancing. The [References](#references) section has a link for details on the various types of load-balancing it can do.
 
 #### Routing to Multiple Backends 
 
@@ -278,6 +378,8 @@ https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/ht
 https://tetrate.io/blog/get-started-with-envoy-in-5-minutes/
 
 https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/examples
+
+https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancers#arch-overview-load-balancing-types
 
 
 

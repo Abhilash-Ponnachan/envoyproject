@@ -35,12 +35,7 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: app1-1
-                port_value: 8080
-        - endpoint:
-            address:
-              socket_address:
-                address: app1-2
+                address: app1
                 port_value: 8080
 
             
