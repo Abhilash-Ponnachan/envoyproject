@@ -361,7 +361,174 @@ Of course this is a very simple demonstration of that capability using the defau
 
 #### Routing to Multiple Backends 
 
-#### Enabling TLS
+So far we have all requests send to the same _backend_ (or _cluster_). Now we shall setup two different apps (`app1` and `app2`) as _backends_ an see how we can _route_ traffic to each. `Envoy` provides so many different _match_ options such as `path`, `prefix`, `headers`, `query_params` etc. to decide how to route traffic ([References](#references) for detailed documentation). In our example we shall keep it simple and just _route_ based on the `prefix` in the `URL`.
+
+To simulate two different apps, we can launch our `demoapp` with some `env` _variables_ to change the _displayed name_, and its _background colour_. We provide these in our modified `docker-compose.yaml`.
+
+```yaml
+version: "3"
+services:
+  webapp-1:
+    image: demoapp
+    expose:
+    - "8080"
+    container_name: app1
+    networks:
+    - envoy_demo_nw
+  webapp-2:
+    image: demoapp
+    expose:
+    - "8080"
+    container_name: app2
+    environment: 
+    - APPNAME=Demo App-2
+    - BGCOLOR=#defc79
+    networks:
+    - envoy_demo_nw
+  proxy:
+    image: envoyproxy/envoy
+    ports:
+    - "8080:8080"
+    container_name: envoy
+    networks:
+    - envoy_demo_nw
+    volumes: 
+    - ../proxy/config:/etc/envoy
+networks: 
+  envoy_demo_nw:
+    ipam:
+      driver: default
+```
+
+It is almost same as before, we simply changed the `container_name` to `app1` and `app2` and add a couple of `env` variables to `app2` to make it look different (_lime_ background colour) and display name as `Demo App-2`.
+
+Then we modify the `envoy.yaml` config to add `app2` as a different _cluster_, then specify a couple of `match` `prefix` directives to _route_ the traffic to the respective cluster.
+
+```yaml
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8080
+    filter_chains: 
+      - filters:
+        - name: envoy.filters.network.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            stat_prefix: http_direct_response
+            http_filters:
+            - name: envoy.filters.http.router
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+            route_config:
+              virtual_hosts:
+              - name: route_app1_app2
+                domains: ["*"]
+                routes:
+                - match:
+                    prefix: "/app1"
+                  route:
+                    cluster: app-one
+                - match:
+                    prefix: "/app2"
+                  route:
+                    cluster: app-two
+  clusters:
+  - name: app-one
+    connect_timeout: 3s
+    type: strict_dns
+    load_assignment:
+      cluster_name: app-one
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: app1
+                port_value: 8080
+  - name: app-two
+    connect_timeout: 3s
+    type: strict_dns
+    load_assignment:
+      cluster_name: app-two
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: app2
+                port_value: 8080
+```
+
+This should be all that is needed to route traffic to _cluster_ (`app-one` or `app-two`) based on the path _prefix_. And sort of works, if we launch our `docker-compose` now and try to browse `http://localhost:8080/app1` or `http://localhost:8080/app2` we will see our web pages, but without some of the _style_ settings and _favicon_. 
+
+> > > screen shots
+
+Similarly is we try to access the `http://localhost:8080/app1/api/info` endpoint we will end up the `index.html` page !!!
+
+The issue is that when `Envoy` does a `prefix` `match` for a _route_ it does not seem to _forward_ _"nested"_ paths along (such as `app1/assets/` or `app1/api`). Therefore these paths have to be explicitly specified pointing to the right _cluster_. This can seem repetitive. In our example to make this work we would have to add extra entries in the `routes` section for each _path_. That section of the `envoy.yaml` will now look like.
+
+```  yaml
+...
+			route_config:
+              virtual_hosts:
+              - name: route_app1_app2
+                domains: ["*"]
+                routes:
+                - match:
+                    prefix: "/app1/assets"
+                  route:
+                    cluster: app-one
+                    prefix_rewrite: "/assets"
+                - match:
+                    prefix: "/app1/api"
+                  route:
+                    cluster: app-one
+                    prefix_rewrite: "/api"
+                - match:
+                    prefix: "/app1"
+                  route:
+                    cluster: app-one
+                    prefix_rewrite: "/"
+                - match:
+                    prefix: "/app2/assets"
+                  route:
+                    cluster: app-two
+                    prefix_rewrite: "/assets"
+                - match:
+                    prefix: "/app2/api"
+                  route:
+                    cluster: app-two
+                    prefix_rewrite: "/api"
+                - match:
+                    prefix: "/app2"
+                  route:
+                    cluster: app-two
+                    prefix_rewrite: "/"
+...
+```
+
+Also note that we use the `prefix_rewrite` directive to remove the _"prefix"_ part from the request sent to the _upstream_ app. The _prefix_ part is only useful within the context of the _downstream_ and the _proxy_ to determine the _route_. The backend app (`demoapp` in our case) will not know how to handle a request with the _prefix_ path (`app1` or `app2` etc.).
+
+With this modification to our `envoy.yaml` configuration we should be able to successfully route to `app1` or `app2` using a prefix and be able to see the full working application.
+
+> > > insert screen shot
+
+##### Regex Match & Rewrite
+
+To me that seems like a lot of repetitive entries, and also seems to need knowledge of the upstream application paths to make it work. Unfortunately I could not find any _"wildcard"_ matching mechanism as far as I know with `Envoy`. 
+
+The next best thing however seems to be to use its _Regex_ matching and rewriting capability. So we shall now modify the `envoy.yaml` config using `safe_regex` _match_ and `regex_rewrite`. The modified `route` section in our `envoy.yaml` with the _Regex_ will look like:
+
+```yaml
+
+```
+
+Now if we test out our _URLs_ `http://localhost:8080/app1` or `app2` in the browser we should see the same result we saw previously. And yes, even though we can avoid the repetition, and reduce the lines of configuration, I think this can get quite complicated and error prone. Error's in _Regexes_ can be infamously hard to test and debug. As a case in point here is a link (https://blog.cloudflare.com/cloudflare-outage/) to a `CloudFlare` outage caused by a badly behaving _Regex_. So be extra cautious when taking this approach. 
+
+
 
 #### Dynamic Configuration
 
@@ -380,6 +547,8 @@ https://tetrate.io/blog/get-started-with-envoy-in-5-minutes/
 https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/examples
 
 https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancers#arch-overview-load-balancing-types
+
+https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-msg-config-route-v3-routematch
 
 
 

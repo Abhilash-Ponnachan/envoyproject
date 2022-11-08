@@ -4,14 +4,17 @@ services:
     image: demoapp
     expose:
     - "8080"
-    container_name: app1-1
+    container_name: app1
     networks:
     - envoy_demo_nw
   webapp-2:
     image: demoapp
     expose:
     - "8080"
-    container_name: app1-2
+    container_name: app2
+    environment: 
+    - APPNAME=Demo App-2
+    - BGCOLOR=#defc79
     networks:
     - envoy_demo_nw
   proxy:

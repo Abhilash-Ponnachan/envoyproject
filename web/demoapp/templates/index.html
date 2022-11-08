@@ -2,8 +2,48 @@
     <!doctype html>
     <html lang="en">
         <head>
-            <link rel="shortcut icon" type="image/x-icon" href="/assets/favicon.png">
-            <link rel="stylesheet" href="/assets/style.css">
+            <!--<link rel="shortcut icon" type="image/x-icon" href="/assets/favicon.png">-->
+            <!--<link rel="stylesheet" href="/assets/style.css">-->
+            <script type="text/javascript">
+                // Dynamically set favicon & style.css paths, to handle path based routing
+                // /app1/assets/ OR /app2/assets/ OR /assets/
+                function getPrefix(){
+                    let prefix = ""
+                    const path = window.location.pathname
+                    const parts = path.split("/")
+                    if (parts.length > 0){
+                        if (parts[parts.length - 1].trim().toLowerCase() === "index.html"){
+                            parts.pop()
+                        }
+                        prefix = parts.join("")
+                    }
+                    return prefix
+                }
+                function addAssets(){
+                    const prefix = getPrefix()
+                    let href = ""
+                    // add favion
+                    const icon = document.createElement('link');
+                    icon.setAttribute('rel', 'shortcut icon');
+                    icon.setAttribute('type', 'image/x-icon');
+                    href = "/assets/favicon.png"
+                    if (prefix.length > 0){
+                        href = `/${prefix}${href}`
+                    }
+                    icon.setAttribute('href', href);
+                    document.head.appendChild(icon);
+                    // add stylesheet
+                    const css = document.createElement('link');
+                    css.setAttribute('rel', 'stylesheet');
+                    href = "/assets/style.css"
+                    if (prefix.length > 0){
+                        href = `/${prefix}${href}`
+                    }
+                    css.setAttribute('href', href);
+                    document.head.appendChild(css);
+                }
+                addAssets();
+            </script>
             <title>{{.Title}}</title>
             <!--Override BG & FG Color with param values -->
             <style>

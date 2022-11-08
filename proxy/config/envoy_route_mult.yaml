@@ -21,27 +21,40 @@ static_resources:
                 domains: ["*"]
                 routes:
                 - match:
-                    safe_regex:
-                      google_re2: {}
-                      regex: "^\/app1(\/.*)*"
+                    prefix: "/app1/assets"
                   route:
                     cluster: app-one
-                    regex_rewrite:
-                      pattern:
-                        google_re2: {}
-                        regex: "^\/app1\/(.*)|^\/app1\/"
-                      substitution: /\1
+                    prefix_rewrite: "/assets"
                 - match:
-                    safe_regex:
-                      google_re2: {}
-                      regex: "^\/app2(\/.*)*"
+                    prefix: "/app1/api"
+                  route:
+                    cluster: app-one
+                    prefix_rewrite: "/api"
+                - match:
+                    prefix: "/app1"
+                  route:
+                    cluster: app-one
+                    prefix_rewrite: "/"
+                - match:
+                    prefix: "/app2/assets"
                   route:
                     cluster: app-two
-                    regex_rewrite:
-                      pattern:
-                        google_re2: {}
-                        regex: "^\/app2\/(.*)|^\/app2\/"
-                      substitution: /\1
+                    prefix_rewrite: "/assets"
+                - match:
+                    prefix: "/app2/api"
+                  route:
+                    cluster: app-two
+                    prefix_rewrite: "/api"
+                - match:
+                    prefix: "/app2"
+                  route:
+                    cluster: app-two
+                    prefix_rewrite: "/"
+                - match:
+                    prefix: "/"
+                  route:
+                    cluster: app-two
+                    prefix_rewrite: "/"
   clusters:
   - name: app-one
     connect_timeout: 3s

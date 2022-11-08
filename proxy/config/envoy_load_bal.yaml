@@ -17,31 +17,13 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
             route_config:
               virtual_hosts:
-              - name: route_app1_app2
+              - name: direct_static_response
                 domains: ["*"]
                 routes:
                 - match:
-                    safe_regex:
-                      google_re2: {}
-                      regex: "^\/app1(\/.*)*"
+                    prefix: "/"
                   route:
                     cluster: app-one
-                    regex_rewrite:
-                      pattern:
-                        google_re2: {}
-                        regex: "^\/app1\/(.*)|^\/app1\/"
-                      substitution: /\1
-                - match:
-                    safe_regex:
-                      google_re2: {}
-                      regex: "^\/app2(\/.*)*"
-                  route:
-                    cluster: app-two
-                    regex_rewrite:
-                      pattern:
-                        google_re2: {}
-                        regex: "^\/app2\/(.*)|^\/app2\/"
-                      substitution: /\1
   clusters:
   - name: app-one
     connect_timeout: 3s
@@ -53,19 +35,12 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: app1
+                address: app1-1
                 port_value: 8080
-  - name: app-two
-    connect_timeout: 3s
-    type: strict_dns
-    load_assignment:
-      cluster_name: app-two
-      endpoints:
-      - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                address: app2
+                address: app1-2
                 port_value: 8080
 
             
