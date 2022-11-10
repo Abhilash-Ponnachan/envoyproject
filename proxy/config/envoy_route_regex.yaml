@@ -10,7 +10,7 @@ static_resources:
         - name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            stat_prefix: http_direct_response
+            stat_prefix: http_route_regex
             http_filters:
             - name: envoy.filters.http.router
               typed_config:

@@ -523,16 +523,105 @@ To me that seems like a lot of repetitive entries, and also seems to need knowle
 The next best thing however seems to be to use its _Regex_ matching and rewriting capability. So we shall now modify the `envoy.yaml` config using `safe_regex` _match_ and `regex_rewrite`. The modified `route` section in our `envoy.yaml` with the _Regex_ will look like:
 
 ```yaml
-
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8080
+    filter_chains: 
+      - filters:
+        - name: envoy.filters.network.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            stat_prefix: http_direct_response
+            http_filters:
+            - name: envoy.filters.http.router
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+            route_config:
+              virtual_hosts:
+              - name: route_app1_app2
+                domains: ["*"]
+                routes:
+                - match:
+                    safe_regex:
+                      google_re2: {}
+                      regex: "^\/app1(\/.*)*"
+                  route:
+                    cluster: app-one
+                    regex_rewrite:
+                      pattern:
+                        google_re2: {}
+                        regex: "^\/app1\/(.*)|^\/app1\/"
+                      substitution: /\1
+                - match:
+                    safe_regex:
+                      google_re2: {}
+                      regex: "^\/app2(\/.*)*"
+                  route:
+                    cluster: app-two
+                    regex_rewrite:
+                      pattern:
+                        google_re2: {}
+                        regex: "^\/app2\/(.*)|^\/app2\/"
+                      substitution: /\1
+  clusters:
+  - name: app-one
+    # same as before, not shown for brevity
+  - name: app-two
+    # same as before, not shown for brevity
 ```
 
 Now if we test out our _URLs_ `http://localhost:8080/app1` or `app2` in the browser we should see the same result we saw previously. And yes, even though we can avoid the repetition, and reduce the lines of configuration, I think this can get quite complicated and error prone. Error's in _Regexes_ can be infamously hard to test and debug. As a case in point here is a link (https://blog.cloudflare.com/cloudflare-outage/) to a `CloudFlare` outage caused by a badly behaving _Regex_. So be extra cautious when taking this approach. 
 
+#### Access Logs
+
+If we are familiar with other _proxy technologies_ such as `Nginx`, we can usually see the _access logs_ quite readily displayed for all requests received by it. With `Envoy` this is a feature that we can enable with configuration. To do that we simply add a directive `access_log` and include one of the built-in access loggers that come with `Envoy`. To keep things simple we shall use the `stdout` _access logger_, there are many more _loggers_ that can send the output to _files_ or _gRPC_ end points, _open telemetry_ etc. The section gives a link to these in detail. With the `access_log`section added to the `http_connection_manager `  _filter_ our `envoy.yaml` will now look as shown.
+
+```yaml
+	filter_chains: 
+      - filters:
+        - name: envoy.filters.network.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            stat_prefix: http_access_log
+            access_log:
+            - name: envoy.access_loggers.stdout
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+            http_filters:
+            - name: envoy.filters.http.router
+```
+
+This should show the access logs in the _default log format_. If we wish to change that we can do so by additional configuration to the `log_format` directive. We shall leave it as the _default_. If we re-launch our setup and browse to our apps via the proxy `http://localhost:8080/app1` or `app2` we should see some _access logs_ in the terminal shown below.
+
+```bash
+#...
+envoy       | [2022-11-12T12:39:27.201Z] "GET / HTTP/1.1" 404 NR 0 0 0 - "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "2407602e-7ce2-4f23-958e-d093d0280188" "localhost:8080" "-"
+envoy       | [2022-11-12T12:39:27.278Z] "GET /favicon.ico HTTP/1.1" 404 NR 0 0 0 - "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "5b35d29c-2109-4f24-b35b-e0422e420ad3" "localhost:8080" "-"
+envoy       | [2022-11-12T12:39:35.562Z] "GET /app1 HTTP/1.1" 200 - 0 2191 6 5 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "daaac977-f0a3-404d-b990-4754c21b6d94" "localhost:8080" "172.19.0.4:8080"
+envoy       | [2022-11-12T12:39:35.619Z] "GET /app1/assets/style.css HTTP/1.1" 200 - 0 377 4 4 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "a2433619-11d5-4210-baeb-4c68ffc3affa" "localhost:8080" "172.19.0.4:8080"
+envoy       | [2022-11-12T12:39:35.626Z] "GET /app1/assets/favicon.png HTTP/1.1" 200 - 0 555 0 0 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "4f063985-f0df-4ff5-a2a9-720e89bcee16" "localhost:8080" "172.19.0.4:8080"
+envoy       | [2022-11-12T12:39:58.878Z] "GET /app2 HTTP/1.1" 200 - 0 2187 1 0 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "73bb6750-2784-4262-9e08-d4b70546cdcf" "localhost:8080" "172.19.0.3:8080"
+envoy       | [2022-11-12T12:39:58.924Z] "GET /app2/assets/style.css HTTP/1.1" 200 - 0 377 1 0 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "c94d4f1c-2b21-42f1-8b69-32be864681a6" "localhost:8080" "172.19.0.3:8080"
+envoy       | [2022-11-12T12:39:58.928Z] "GET /app2/assets/favicon.png HTTP/1.1" 200 - 0 555 0 0 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/106.0" "64366834-34a2-4aa0-b013-19d1b15d2c83" "localhost:8080" "172.19.0.3:8080"
+```
+
+We can see the _user agent_, _HTTP verb_, _path_, _listener IP_, _upstream IP_, and even a _unique request id_ etc. This can be very useful to debug (troubleshoot). Of course in an actual scenario, the log target would be some _log aggregation_ service like `Splunk` or `DataDog` or `Prometheus/Grafana` etc.
+
+#### Admin API
 
 
-#### Dynamic Configuration
+
+##### Info
+
+##### Statistics
 
 
+
+### Next
 
 <a id="#references">
 
@@ -549,6 +638,8 @@ https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/examples
 https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancers#arch-overview-load-balancing-types
 
 https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-msg-config-route-v3-routematch
+
+https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/accesslog/v3/accesslog.proto#extension-category-envoy-access-loggers
 
 
 
