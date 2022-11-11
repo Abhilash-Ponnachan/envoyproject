@@ -1,5 +1,21 @@
+# Sample `Envoy` Configuration Project
+
+### Table of Contents
+
+## Objective
+
+[`Envoy`](#https://www.envoyproxy.io/) is a one of the most popular _proxy_ technology as of this writing, especially in the "_Cloud Native Ecosystem"_. However it does have a bit of a learning curve, and its documentation does not seem to be very beginner friendly. The objective of this project is to provide an introduction to start configuring `Envoy` and be confident in playing around with it. By the end we hope to be familiar with its _concepts_, _configuration constructs_, and finding our way through their _documentation_.
+
+It is a beginner level project, and we shall restrict our scope to _static configuration_ for now, and cover the following aspects:
+
+
+
+## Running `Envoy` using `Docker`
+
+
 
 ### Commands
+
 ```bash
 # retag envoy image
 $ docker tag envoyproxy/envoy:v1.23-latest envoyproxy/envoy
@@ -471,7 +487,7 @@ Similarly is we try to access the `http://localhost:8080/app1/api/info` endpoint
 The issue is that when `Envoy` does a `prefix` `match` for a _route_ it does not seem to _forward_ _"nested"_ paths along (such as `app1/assets/` or `app1/api`). Therefore these paths have to be explicitly specified pointing to the right _cluster_. This can seem repetitive. In our example to make this work we would have to add extra entries in the `routes` section for each _path_. That section of the `envoy.yaml` will now look like.
 
 ```  yaml
-...
+# ...
 			route_config:
               virtual_hosts:
               - name: route_app1_app2
@@ -507,7 +523,7 @@ The issue is that when `Envoy` does a `prefix` `match` for a _route_ it does not
                   route:
                     cluster: app-two
                     prefix_rewrite: "/"
-...
+# ...
 ```
 
 Also note that we use the `prefix_rewrite` directive to remove the _"prefix"_ part from the request sent to the _upstream_ app. The _prefix_ part is only useful within the context of the _downstream_ and the _proxy_ to determine the _route_. The backend app (`demoapp` in our case) will not know how to handle a request with the _prefix_ path (`app1` or `app2` etc.).
@@ -578,7 +594,7 @@ Now if we test out our _URLs_ `http://localhost:8080/app1` or `app2` in the brow
 
 #### Access Logs
 
-If we are familiar with other _proxy technologies_ such as `Nginx`, we can usually see the _access logs_ quite readily displayed for all requests received by it. With `Envoy` this is a feature that we can enable with configuration. To do that we simply add a directive `access_log` and include one of the built-in access loggers that come with `Envoy`. To keep things simple we shall use the `stdout` _access logger_, there are many more _loggers_ that can send the output to _files_ or _gRPC_ end points, _open telemetry_ etc. The section gives a link to these in detail. With the `access_log`section added to the `http_connection_manager `  _filter_ our `envoy.yaml` will now look as shown.
+If we are familiar with other _proxy technologies_ such as `Nginx`, we can usually see the _access logs_ quite readily displayed for all requests received by it. With `Envoy` this is a feature that we can enable with configuration. To do that we simply add a directive `access_log` and include one of the built-in access loggers that come with `Envoy`. To keep things simple we shall use the `stdout` _access logger_, there are many more _loggers_ that can send the output to _files_ or _gRPC_ end points, _open telemetry_ etc. The [References](#references) section gives a link to these in detail. With the `access_log`section added to the `http_connection_manager `  _filter_ our `envoy.yaml` will now look as shown.
 
 ```yaml
 	filter_chains: 
@@ -613,15 +629,100 @@ We can see the _user agent_, _HTTP verb_, _path_, _listener IP_, _upstream IP_, 
 
 #### Admin API
 
+`Envoy` also provides an _administration API_ that can be used to _view configuration, traffic statistics_, or even _control the behaviour_ of the _proxy server_. To enable this we have to add an extra section in the `envoy.yaml` file.
 
+```yaml
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
+static_resources:
+  listeners:
+  # ...
+```
 
-##### Info
+With that change if we re-launch our `docker-compose.yaml` setup we should be able to make HTTP requests to the _admin_ endpoint (setup as  `localhost:9901` in this case) and see information regarding _listeners_,_clusters_, _endpoints_ etc. We can even get a full `config_dump` (which can be pretty big). There is a `/help` resource that we can query to get all the supported resources/operations.
+
+```bash
+$ curl http://localhost:9901/help
+admin commands are:
+  /: Admin home page
+  /certs: print certs on machine
+  /clusters: upstream cluster status
+  /config_dump: dump current Envoy configs (experimental)
+  /contention: dump current Envoy mutex contention stats (if enabled)
+  /cpuprofiler: enable/disable the CPU profiler
+  /drain_listeners: drain listeners
+  /healthcheck/fail: cause the server to fail health checks
+  /healthcheck/ok: cause the server to pass health checks
+  /heapprofiler: enable/disable the heap profiler
+  /help: print out list of admin commands
+  /hot_restart_version: print the hot restart compatibility version
+  /init_dump: dump current Envoy init manager information (experimental)
+  /listeners: print listener info
+  /logging: query/change logging levels
+  /memory: print current allocation/heap usage
+  /quitquitquit: exit the server
+  /ready: print server state, return 200 if LIVE, otherwise return 503
+  /reopen_logs: reopen access logs
+  /reset_counters: reset all counters to zero
+  /runtime: print runtime values
+  /runtime_modify: modify runtime values
+  /server_info: print server version/status information
+  /stats: print server stats
+  /stats/prometheus: print server stats in prometheus format
+  /stats/recentlookups: Show recent stat-name lookups
+  /stats/recentlookups/clear: clear list of stat-name lookups and counter
+  /stats/recentlookups/disable: disable recording of reset stat-name lookup names
+  /stats/recentlookups/enable: enable recording of reset stat-name lookup names
+
+```
+
+We can see our _clusters_ using the `/clusters` resource.
+
+```bash
+app-two::observability_name::app-two
+app-two::default_priority::max_connections::1024
+#... lots more info ...
+app-one::observability_name::app-one
+app-one::default_priority::max_connections::1024
+# ... lost more info ...
+```
 
 ##### Statistics
 
+We can also get usage statistics using the `/stats` resource.
 
+```bash
+$ curl http://localhost:9901/stats
+cluster.app-one.assignment_stale: 0
+#... lost more info ...
+cluster.app-one.external.upstream_rq_200: 3
+cluster.app-one.external.upstream_rq_2xx: 3
+cluster.app-one.external.upstream_rq_completed: 3
+# ...
+http.http_access_log.downstream_cx_active: 1
+http.http_access_log.downstream_cx_delayed_close_timeout: 0
+http.http_access_log.downstream_cx_http1_total: 1
+# ...
+```
+
+In our example we used `htt_access_log` as the `stat_prefix`, it does not matter what the value is it is just a _string_ to help us filter the `stats` information. 
+
+The setup for _Admin API_ is explained in the link provide in [References](#references). It is not just _API_, the root path for _Admin_ (in our case `http://localhost:9901/`) provides a handy web page as UI that we can use to view all this information visually.
+
+> > > insert admin UI screenshot
+
+Enabling the _Admin_ endpoint can be very useful, however if enabled it should have **very strong security** protecting that endpoint as it can be used to tap into the _proxy_ and even do destructive _operations_ on it. So use it with caution and following _best practices_. 
+
+As a tool for learning `Envoy`, to peek under the hood and see what is going on with a _request_ it is extremely useful though.
 
 ### Next
+
+This concludes our initial foray into configuration of  `Envoy`. The real power of `Envoy`, especially in its use as _service proxy_ comes from its capability to be configured _"dynamically"_. This more advanced capability is supported via  a set of gRPC/REST based configuration provider APIs. These APIs are collectively known as “xDS” (_* Discovery Service_), and this link https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/operations/dynamic_configuration is a good starting point to learn more about these.
+
+The next step of the journey to learn `Envoy` would be to setup some _dynamic configuration_, then implement a simple _"control-plane"_, with which we can explicitly change configuration on the fly. However that is a big project in itself, and a story for another time!
 
 <a id="#references">
 
@@ -640,6 +741,8 @@ https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_ba
 https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-msg-config-route-v3-routematch
 
 https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/accesslog/v3/accesslog.proto#extension-category-envoy-access-loggers
+
+https://www.envoyproxy.io/docs/envoy/latest/start/quick-start/admin#stat-prefix
 
 
 
