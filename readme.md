@@ -157,7 +157,7 @@ With this we can now simulate different _backends_ (_upstream target_), and we a
 
 ### Basic Components of Envoy Configuration
 
-before we dive into _configuration_ some quick reading up on the _architecture_ and familiarity with its _concepts_ and _terminology_ will be helpful.  There are lost of content on the web that explains this at different levels. One I found to get a quick summary is this one [Getting Started with Envoy in 5 minutes](#https://tetrate.io/blog/get-started-with-envoy-in-5-minutes/)
+before we dive into _configuration_ some quick reading up on the _architecture_ and familiarity with its _concepts_ and _terminology_ will be helpful.  There are lost of content on the web that explains this at different levels. One I found to get a quick summary is this one _"Getting Started with Envoy in 5 minutes"_(https://tetrate.io/blog/get-started-with-envoy-in-5-minutes/)
 
 At the risk of massively _oversimplify_ it. We can think of `Envoy` _configuration_ as consisting of the following components.
 
@@ -406,7 +406,7 @@ Modify the `envoy.yaml`configuration to add an `endpoint` under the `lb_endpoint
 ```yaml
 static_resources:
   listeners:
- 	# not shown here for brevity...
+  # not shown here for brevity...
   clusters:
   - name: app-one
     connect_timeout: 3s
@@ -660,7 +660,7 @@ Now if we test out our _URLs_ `http://localhost:8080/app1` or `app2` in the brow
 If we are familiar with other _proxy technologies_ such as `Nginx`, we can usually see the _access logs_ quite readily displayed for all requests received by it. With `Envoy` this is a feature that we can enable with configuration. To do that we simply add a directive `access_log` and include one of the built-in access loggers that come with `Envoy`. To keep things simple we shall use the `stdout` _access logger_, there are many more _loggers_ that can send the output to _files_ or _gRPC_ end points, _open telemetry_ etc. The [References](#references) section gives a link to these in detail. With the `access_log`section added to the `http_connection_manager `  _filter_ our `envoy.yaml` will now look as shown.
 
 ```yaml
-	filter_chains: 
+    filter_chains: 
       - filters:
         - name: envoy.filters.network.http_connection_manager
           typed_config:
