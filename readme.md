@@ -4,17 +4,29 @@
 
 ## Objective
 
-[`Envoy`](#https://www.envoyproxy.io/) is a one of the most popular _proxy_ technology as of this writing, especially in the "_Cloud Native Ecosystem"_. However it does have a bit of a learning curve, and its documentation does not seem to be very beginner friendly. The objective of this project is to provide an introduction to start configuring `Envoy` and be confident in playing around with it. By the end we hope to be familiar with its _concepts_, _configuration constructs_, and finding our way through their _documentation_.
+[`Envoy`](#https://www.envoyproxy.io/) is a one of the most popular _proxy_ technology as of this writing, especially in the "_Cloud Native Ecosystem"_. However it does have a bit of a learning curve, and its documentation does not seem to be very beginner friendly. The objective of this project is to provide an introduction to getting started with `Envoy` configuration, and be confident in playing around with it. By the end we hope to be familiar with its _concepts_, _configuration constructs_, and finding our way through their _documentation_.
 
 It is a beginner level project, and we shall restrict our scope to _static configuration_ for now, and cover the following aspects:
 
+- Run `Envoy` using its `Docker` image, and view its _default configuration_
+- Understand the _fundamental logical components_ of the `Envoy` architecture
+- Start with an _almost empty basic_ configuration
+- Work our way through the various capabilities/components such as _load balancing_, _routing_, _access logging_
+- Finally look at enabling _Admin API/Interface_
 
+The most important _objective_ is to **enjoy the exploratory process of learning** and gain confidence to dive deeper.
+
+Note: we shall be using `Docker` and `Docker Compose` to do all our exploration, so there is no need to install anything else. This project also includes a **sample configurable web application** written in `Go` that can help us _simulate_ backend/upstream services.
 
 ## Running `Envoy` using `Docker`
 
+[`Docker Hub`](#https://hub.docker.com/r/envoyproxy/envoy/tags) provides packaged `Envoy Proxy` images that we can _pull_ and use straight out-of-the-box.
 
+```bash
+$ docker pull envoyproxy/envoy:v1.23-latest
+```
 
-### Commands
+One thing to note is that `envoyproxy/envoy` does not provide _default_ `latest` _tag_, so I find it more convenient to _re-tag_ it locally.
 
 ```bash
 # retag envoy image
@@ -24,20 +36,25 @@ $ docker image ls
 REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
 envoyproxy/envoy    latest              71f9c29a67ae        3 weeks ago         132MB
 envoyproxy/envoy    v1.23-latest        71f9c29a67ae        3 weeks ago         132MB
-...
+```
 
+Now we _run_ this image and _publish_ `port 10000` (as that is the _default_ configured port)
+
+```bash
 # run envoy docker image
 $ docker run --rm -d --name=envoy -p 10000:10000 envoyproxy/envoy
 bfc7c9ab4cd378f0c32a5f3a521f9cf0742067708a1be002ccc632a89f9da9d8
 # default port for envoy is 10000, publish to host on same
-
 ```
 
-Check browser http://localhost:10000
+If we use a _browser_ and navigate to `http://localhost:10000` we should see the [`Envoy Proxy`](#www.envoyproxy.io) web home page, as that is the _upstream_ target it gets **_proxied_** to by default.
 
->>> proxied to "Envoy home page"
+![Default Envoy Proxy view in Browser](./docs/scrn-shot-defualt-envoy.png)
 
-### Commands
+#### Inside the Container
+
+If we take a look inside the _running container_ it becomes clearer whats happening. We do this using the `docker exec` command.
+
 ```bash
 # exec into 'evnoy' container 
 $ docker exec -it envoy sh 
@@ -49,7 +66,15 @@ envoy          1  1.5  0.5 2363152 43748 ?       Ssl  12:35   0:01 envoy -c /etc
 # cehck the config file
 \# ls /etc/envoy
 envoy.yaml
+```
 
+Inside the _container_ we have an `envoy` _process_ started with the `-c` option (which points to the _configuration file_ to be used) with the path as **`/etc/envoy/envoy.yaml`**. This is the file we shall be playing around with throughout the project!
+
+#### Hacking the Default Config
+
+Before we try to systematically learn the configuration, we shall try a simple _hack_, by just copying the `/etc/envoy/envoy.yaml` file from the container to a directory on our host machine, change a few things and then _mount_ that _directory_ back re-launching the container. 
+
+```bash
 # create host dir 'proxy'
 $ mkdir proxy
 
@@ -62,13 +87,15 @@ $ tree
 │   └── config
 │       └── envoy.yaml
 └── readme.md
+```
 
-# make a copy of the envoy.yaml file
-$ cp proxy/config/envoy.yaml proxy/config/envoy_org.yaml
+Now we have a copy of the file in our `pwd/proxy/config` path. If we open the file up in an editor and take a look it will have lots of details and can be quite intimidating at first!
 
-# view contents of proxy/config/envoy.yaml
-...
+Without even understanding anything about `Envoy` _configuration_ at this stage let us simply _replace_ the _"occurrences"_ of `www.envoyproxy.io` with `www.google.com`. Don't forget to make a -copy_ of the original _default_ file (in case we break anything and need to start over). 
 
+We are simply _hacking_ around at this stage to see what effect it will have (a snapshot of the modified file can be found in this project as `proxy/config/envoy_google.yaml`). With this change we relaunch the _container_, this time mounting our `/proxy/config` directory as the `/etc/envoy` directory in the container).
+
+```bash
 # edit occurances of www.envoyproxy.io with -> www.google.com
 $ vim proxy/config/envoy.yaml
 
@@ -82,45 +109,77 @@ $ docker run --rm -d --name=envoy -p 10000:10000 -v $(pwd)/proxy/config:/etc/env
 873b22138de171de6989bfbc008830b18868220f11e9e72e0cc57fbc1efce065
 ```
 
-Now again check browser http://localhost:1000
+If we navigate to http://localhost:1000 in the _browser_ again we should now see that we are being _proxied_ to [Google Search](#https://www.google.com)
 
->>> proxied to "Google Search home page"
+![Proxy to Google Search](./docs/scrn-shot-proxy-google.png)
 
-### Fresh Configuration
-Make a configuration from scratch. Target different backends (upstream) servers.
+Now we know that we can use this _approach_ to create our own `envoy.yaml` file and _mount_ it into the `envoyproxy/envoy` _container_ to  control its behaviour with our _custom configuration_.
 
-Simple backend app in `Go`.
-Shows a simple web page with the Name of the app, and the Host it is running on. By default it runs on PORT 8080, but that can be customised via Env var.
-The app name, background and foreground colours can be customised via Env vars.
+## Configuration From Scratch
 
-We containerise it and run it as Docker containers.
+We are now ready to start with the _basic building blocks_ of _configuration_, starting from scratch and work our way up adding different components to it till we get a reasonable working proxy that does useful things.
 
-Build docker image
+### Sample Configurable Backend Application
+
+When experimenting with _proxies_ we often need some sort of "_backend_" application/s to act as the target. To help with this I have made a simple _web  application_ in **`Go`** (found in the `web/demoapp`directory). It has a `Dockerfile` to help with _packaging_ it as a `Docker image`. The application is very lightweight; it displays a simple web page with the _Name of the App_, and the _Host_ it is running on. Additionally it has an `api/info` _REST_ endpoint to get further details . By default it runs on `PORT 8080`, but that can be customised via _environment variables_. Since we want to use the same _image_ to _"simulate"_ different applications (or different instances of the _same_ application), the _App Name_, _Background_ and _Foreground_ colours can be customised using _environment variables_ (`APPNAME`, `BGCOLOR`, `FGCOLOR`).
+
+To use it we navigate to the `web/demoapp` directory and build the `Docker` image.
+
 ```bash
 $ docker build -t demoapp .
 
 $ docker image ls
+REPOSITORY                  TAG            IMAGE ID       CREATED         SIZE
+demoapp                     latest         1424e02dacf1   1 days ago      13.9MB
 ```
 
-Run the app and expose it on Port 1111
+To launch the app with its _"default setting"_, we simply _run_ the `Docker` image and expose it on a `Port` (let's try `1111`)
 ```bash
 $ docker run --rm --name=demoapp1 -p 1111:8080 demoapp
+2022/11/13 17:39:04 *** conf data *** 
+ main.configData{AssetsDir:"./assets", TemplatesDir:"./templates", Port:"8080", AppName:"Demo App - 1", BgColor:"#aeeaf2", FgColor:"#121e59"}
+2022/11/13 17:39:04 Starting http server on PORT: 8080
 ```
->>> show screen image
+From our _web browser_ we should now be able to see what our _`demoapp1`_ looks like.
 
-Run with diff app name and colours
+![demoapp1](./docs/scrn-shot-demoapp1.png)
+
+To simulate a different app we can launch another container with a couple of _environment variables_ to customise it.
+
 ```bash
-$ docker run --rm --name=demoapp2 -p 1112:8080 -e "APPNAME=App 2" -e "BGCOLOR=green" demoapp
+$ docker run --rm --name=demoapp2 -p 1112:8080 -e "APPNAME=App 2" -e "BGCOLOR=green" -e "FGCOLOR=pink" demoapp
 ```
->>> show screen image
+Again from the browser if we go to this `Port` (`1112`), we should see our _`demoapp2`_ displayed as below.
+
+![demoapp2](./docs/scrn-shot-demoapp2.png)
+
+With this we can now simulate different _backends_ (_upstream target_), and we are all set to get started with _configuring_ `Envoy`.
 
 ### Basic Components of Envoy Configuration
 
-  Listeners -> Filters -> Routes -> Clusters -> Endpoints
+before we dive into _configuration_ some quick reading up on the _architecture_ and familiarity with its _concepts_ and _terminology_ will be helpful.  There are lost of content on the web that explains this at different levels. One I found to get a quick summary is this one [Getting Started with Envoy in 5 minutes](#https://tetrate.io/blog/get-started-with-envoy-in-5-minutes/)
 
->>> Diagram
+At the risk of massively _oversimplify_ it. We can think of `Envoy` _configuration_ as consisting of the following components.
 
-  Description (summary)
+![Envoy Components](./docs/envoy-components.png)
+
+- **Listeners** : They represent the `IP` and `Port` where `Envoy` _listens_ for incoming traffic.
+
+- **Filter Chains** : These is a _processing chain_ of _modules_ (_filters_) that have the ability to inspect the traffic (at `L4` layer, or at `L7` layer using the `HTTP Connection manager (HCM)` filter). This provides the _extensibility_ feature of `Envoy` and to me is reminiscent of _"pipes & filters"_ architecture.
+
+- **Routes** : These work with `HCM` filter to decide how we wish to _"route"_ traffic (based on _path_, _prefix_,_headers_ etc.), assign weights to routing etc.
+
+- **Clusters** : They represent the _logical_ _backend_ cluster (app  instances) to which traffic should be routed.
+
+- **Endpoints** : These are the actual _upstream_ targets (with their `IP` or `DNS` name and `Ports` etc.). We use these to also control _load balancing_ etc.
+
+  
+
+  There is so much more detail to each and every one of these and more in terms of _retry_, _circuit-breaking_, _rate-limiting_, _connection pools_, _threads_ etc. However, rather than being overwhelmed by all that, we can start playing around with just this basic understanding, get comfortable with the way it works, and gradually layer on more and more details as we go.
+
+## Configurations (finally)
+
+With all that preparation out of the way we can finally get into the configurations step by step.
 
 ### Reverse Proxy Config 
 
@@ -269,9 +328,9 @@ Now we launch the _proxy_ again using the same command we used previously but th
 $ docker run --rm -d --name=envoy -p 8080:8080 -v $(pwd)/proxy/config:/etc/envoy --net=nw_demo_apps envoyproxy/envoy
 ```
 
-Test it out by going to `http://localhost:8080` in your web browser, you should see a web page (served through the _proxy_) showing the name of the application as `Demo App - 1` and the _host_ it is running on (a `Docker` _container id_ in this case). If we access the app container directly using `http://localhost:1111` we should see the exact sage page.
+Test it out by going to `http://localhost:8080` in your web browser, you should see a web page (served through the _proxy_) showing the name of the application as `Demo App - 1` and the _host_ it is running on (a `Docker` _container id_ in this case). If we access the app container directly using `http://localhost:1111` we should see the exact same page.
 
-> > Insert image here
+![Proxy to Backend App](./docs/scrn-shot-proxy-backend.png)
 
 ##### Docker Compose
 
@@ -371,7 +430,11 @@ static_resources:
 
 With that simple change `Envoy` will load-balance multiple requests(that match the `filter`) between those two`endpoints` in the cluster. Now if we navigate to `http://localhost:8080` in a browser and keep refreshing the page, we should see our familiar web-page (for `Demo App-1`), but the `Host` name should keep alternating between two `Docker` _container Ids_.
 
-> >  Insert image 1 & 2 LB
+<img src="./docs/scrn-shot-lb-one.png" alt="Load-balanced Endpoint - 1" style="zoom:80%;" />
+
+
+
+<img src="./docs/scrn-shot-lb-two.png" alt="Load Balanced Endpoint 2" style="zoom:80%;" />
 
 Of course this is a very simple demonstration of that capability using the default `round-robin` algorithm (we can control it using the `lb_policy` directive if needed). `Envoy` can do much more complex load-balancing. The [References](#references) section has a link for details on the various types of load-balancing it can do.
 
@@ -480,7 +543,7 @@ static_resources:
 
 This should be all that is needed to route traffic to _cluster_ (`app-one` or `app-two`) based on the path _prefix_. And sort of works, if we launch our `docker-compose` now and try to browse `http://localhost:8080/app1` or `http://localhost:8080/app2` we will see our web pages, but without some of the _style_ settings and _favicon_. 
 
-> > > screen shots
+![Proxy No Assets](./docs/scrn-shot-route-no-asstes.png)
 
 Similarly is we try to access the `http://localhost:8080/app1/api/info` endpoint we will end up the `index.html` page !!!
 
@@ -488,7 +551,7 @@ The issue is that when `Envoy` does a `prefix` `match` for a _route_ it does not
 
 ```  yaml
 # ...
-			route_config:
+            route_config:
               virtual_hosts:
               - name: route_app1_app2
                 domains: ["*"]
@@ -530,7 +593,7 @@ Also note that we use the `prefix_rewrite` directive to remove the _"prefix"_ pa
 
 With this modification to our `envoy.yaml` configuration we should be able to successfully route to `app1` or `app2` using a prefix and be able to see the full working application.
 
-> > > insert screen shot
+![Proxy Roue with Assets](./docs/scrn-shot-route-nested-path.png)
 
 ##### Regex Match & Rewrite
 
@@ -712,7 +775,7 @@ In our example we used `htt_access_log` as the `stat_prefix`, it does not matter
 
 The setup for _Admin API_ is explained in the link provide in [References](#references). It is not just _API_, the root path for _Admin_ (in our case `http://localhost:9901/`) provides a handy web page as UI that we can use to view all this information visually.
 
-> > > insert admin UI screenshot
+<img src="./docs/scrn-shot-admin-ui.png" alt="Admin UI" style="zoom:67%;" />
 
 Enabling the _Admin_ endpoint can be very useful, however if enabled it should have **very strong security** protecting that endpoint as it can be used to tap into the _proxy_ and even do destructive _operations_ on it. So use it with caution and following _best practices_. 
 
